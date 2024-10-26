@@ -170,4 +170,4 @@ int main(int argc, char *argv[]) {
 }
 
 // Complile using: gcc -o L1Tut L1Tut.c -lavutil -lavformat -lavcodec -lswscale -lz -lm
-// Run program withL L1Tut <videoPath.mp4/mpg/...>
+// Run program with: ./L1Tut <videoPath.mp4/mpg/...>
