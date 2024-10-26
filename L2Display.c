@@ -8,7 +8,48 @@
 
 #define NUMBER_OF_FRAMES 5
 
-int main(int argc, char *argv[]) {
+void display (AVFormatContext *pFormatCtx, AVPacket packet, int videoStream, AVCodecContext *pCodecCtx, AVFrame *pFrame, struct SwsContext *swsCtx, AVFrame* pFrameYUV, SDL_Texture *texture, SDL_Renderer *renderer) {
+    while(av_read_frame(pFormatCtx, &packet) >= 0) {
+        if (packet.stream_index == videoStream) {
+            if (avcodec_send_packet(pCodecCtx, &packet) < 0) break;
+
+            while (!avcodec_receive_frame(pCodecCtx, pFrame)) {
+                // Convert to YUV format
+                sws_scale(swsCtx, (uint8_t const * const *) pFrame->data, pFrame->linesize, 0, pCodecCtx->height, pFrameYUV->data, pFrameYUV->linesize);
+
+                // Update texture with YUV frame data
+                SDL_UpdateYUVTexture(
+                    texture,
+                    NULL,
+                    pFrameYUV->data[0], pFrameYUV->linesize[0],
+                    pFrameYUV->data[1], pFrameYUV->linesize[1],
+                    pFrameYUV->data[2], pFrameYUV->linesize[2]
+                );
+
+                // Clear and render texture
+                SDL_RenderClear(renderer);
+                SDL_RenderCopy(renderer, texture, NULL, NULL);
+                SDL_RenderPresent(renderer);
+            }
+        }
+
+        av_packet_unref(&packet);
+        SDL_PollEvent(NULL);
+    }
+}
+
+int findVideoStream (AVFormatContext *pFormatCtx) {
+    int streamInd = -1;
+
+    for (int i = 0; i < pFormatCtx->nb_streams; i++) {
+        if(pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) streamInd = i;
+        if (streamInd != -1) break;
+    }
+
+    return streamInd;
+}
+
+int main (int argc, char *argv[]) {
 
     if(argc < 2) {
         fprintf(stderr, "Usage: ./L2Display <videoPath.mp4/mkv/mpg/...>\n");
@@ -36,12 +77,7 @@ int main(int argc, char *argv[]) {
     AVCodecContext *pCodecCtx = NULL;
 
     // Find the first video stream
-    int videoStream = -1;
-    for(int i = 0; i < pFormatCtx->nb_streams; i++) {
-        if(pFormatCtx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) videoStream = i;
-        if (videoStream != -1) break;
-    }
-
+    int videoStream = findVideoStream(pFormatCtx);
     if (videoStream == -1) return -1; // Didn't find a video stream
 
     pCodecCtxparam = pFormatCtx->streams[videoStream]->codecpar;
@@ -110,33 +146,7 @@ int main(int argc, char *argv[]) {
     AVPacket packet;
 
     // Read frames and display them
-    while(av_read_frame(pFormatCtx, &packet) >= 0) {
-        if (packet.stream_index == videoStream) {
-            if (avcodec_send_packet(pCodecCtx, &packet) < 0) break;
-
-            while (!avcodec_receive_frame(pCodecCtx, pFrame)) {
-                // Convert to YUV format
-                sws_scale(swsCtx, (uint8_t const * const *) pFrame->data, pFrame->linesize, 0, pCodecCtx->height, pFrameYUV->data, pFrameYUV->linesize);
-
-                // Update texture with YUV frame data
-                SDL_UpdateYUVTexture(
-                    texture,
-                    NULL,
-                    pFrameYUV->data[0], pFrameYUV->linesize[0],
-                    pFrameYUV->data[1], pFrameYUV->linesize[1],
-                    pFrameYUV->data[2], pFrameYUV->linesize[2]
-                );
-
-                // Clear and render texture
-                SDL_RenderClear(renderer);
-                SDL_RenderCopy(renderer, texture, NULL, NULL);
-                SDL_RenderPresent(renderer);
-            }
-        }
-
-        av_packet_unref(&packet);
-        SDL_PollEvent(NULL);
-    }
+    display(pFormatCtx, packet, videoStream, pCodecCtx, pFrame, swsCtx, pFrameYUV, texture, renderer);
 
     // Free allocated resources
     av_free(buffer);
